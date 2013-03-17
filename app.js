@@ -491,3 +491,4 @@ $(function () {
     });
     game.start();
 });
+//@ sourceMappingURL=app.js.map
