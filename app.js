@@ -1,10 +1,10 @@
 /// <reference path="jquery-1.8.d.ts" />
 var Ball = (function () {
-    function Ball(x, y, vx, vy, radius, color) {
+    function Ball(x, y, v, w, radius, color) {
         this.x = x;
         this.y = y;
-        this.vx = vx;
-        this.vy = vy;
+        this.v = v;
+        this.w = w;
         this.radius = radius;
         this.color = color;
         this.theta = 0;
@@ -28,7 +28,7 @@ var Ball = (function () {
     };
     Ball.prototype.ellipse = // getMomentum
     function (ctx, x, y, w, h) {
-        var kappa = 0.5522848, ox = (w / 2) * kappa, oy = // control point offset horizontal
+        var kappa = .5522848, ox = (w / 2) * kappa, oy = // control point offset horizontal
         (h / 2) * kappa, xe = // control point offset vertical
         x + w, ye = // x-end
         y + h, xm = // y-end
@@ -491,4 +491,3 @@ $(function () {
     });
     game.start();
 });
-//@ sourceMappingURL=app.js.map

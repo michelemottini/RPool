@@ -41,6 +41,8 @@
     <Content Include="sounds\ball-ball.mp3" />
     <Content Include="sounds\ball-side.mp3" />
     <Content Include="web.config" />
+    <Content Include="ReadMe.md" />
+    <None Include="mimoSite.pubxml" />
     <None Include="web.Debug.config">
       <DependentUpon>web.config</DependentUpon>
     </None>
