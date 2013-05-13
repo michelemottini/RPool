@@ -8,14 +8,17 @@ class Ball {
   constructor(public x: number, public y: number, public v: number, public w: number, public radius: number, public color: string) {
   } // constructor
 
+  /** Returns the mass of the ball */
   getMass() {
     return Math.pow(this.radius, 3);
   } // getMass
 
+  /** Returns the energy of the ball */
   getEnergy() {
     return this.getMass() * (this.v * this.v + this.w * this.w) / 2;
   } // getEnergy
 
+  /** Returns the momentum of the ball */
   getMomentum() {
     var mass = this.getMass();
     return {
@@ -148,29 +151,35 @@ class Ball {
    * Returns the time of the first future collision with the top or bottom sides of the table. 
    * Returns null if there is no collision.
    * @param min minumum vertical position (i.e. y co-ordinate of the top side of the table)
-   * @param max maximum vertical position (i.e. x co-ordinate of the bottom side of the table)
+   * @param max maximum vertical position (i.e. y co-ordinate of the bottom side of the table)
    */
   sideYCollisionTime(min: number, max: number) {
     return this.sideCollisionTime(this.y, this.w, min, max);
   } // sideYCollisionTime
 
+ 
+  /**
+   * Updates the velocities of this ball and another one after a collision
+   * The coordinate of the balls must be at the collision point.
+   * @param otherBall second colliding ball
+   * @param restitution coefficient of restitution for a ball-ball collision
+    */
   collide(otherBall: Ball, restitution: number) {
-    // http://www.plasmaphysics.org.uk/collision2d.htm
-    var mRatio = Math.pow(otherBall.radius/this.radius,3);  // m2 / m1 - we assume the same density
-    var dvx = this.v - otherBall.v;
-    var dvy = this.w - otherBall.w;
-    var gammaV = Math.atan2(dvy, dvx);
+    // See http://mimosite.com/blog/post/2013/05/13/Billiard-simulation-part-3-collision-between-two-balls
     var dx = this.x - otherBall.x;
     var dy = this.y - otherBall.y;
-    var gammaXY = Math.atan2(dy, dx);
-    var d = Math.sqrt(dx * dx + dy * dy);
-    var alpha = Math.asin(d * Math.sin(gammaV - gammaXY) / (this.radius + otherBall.radius));
-    var a = Math.tan(gammaV + alpha);
-    var deltaVx2 = (restitution + 1) * (dvx + a * dvy) / ((1 + a * a) * (1 + mRatio));
-    otherBall.v = otherBall.v + deltaVx2;
-    otherBall.w = otherBall.w + a * deltaVx2;
-    this.v = this.v - mRatio * deltaVx2;
-    this.w = this.w - a * mRatio * deltaVx2;
+    var dv = this.v - otherBall.v;
+    var dw = this.w - otherBall.w;
+    var alpha = Math.atan2(dy, dx);
+    var sinAlpha = Math.sin(alpha);
+    var cosAlpha = Math.cos(alpha);
+    var m1 = Math.pow(this.radius, 3);
+    var m2 = Math.pow(otherBall.radius, 3);
+    var a = (1 + restitution) / (m1 + m2) * (cosAlpha * dv + sinAlpha * dw);
+    this.v = -m2 * a * cosAlpha + this.v;
+    this.w = -m2 * a * sinAlpha + this.w;
+    otherBall.v = m1 * a * cosAlpha + otherBall.v;
+    otherBall.w = m1 * a * sinAlpha + otherBall.w;
   } // collide
 
 } // class Ball
@@ -248,7 +257,7 @@ class RPool {
   ];
 
   private static fromLeftFourHorizontal = [
-    new Ball(100, 150, 40, 0, 10, "black"),
+    new Ball(100, 150, 40, 0, 15, "black"),
     new Ball(200, 150, 0, 0, 10, "red"),
     new Ball(220, 150, 0, 0, 10, "yellow"),
     new Ball(240, 150, 0, 0, 10, "yellow"),

@@ -11,19 +11,22 @@ var Ball = (function () {
         this.phi = 0;
     }
     Ball.prototype.getMass = // constructor
+    /** Returns the mass of the ball */
     function () {
         return Math.pow(this.radius, 3);
     };
     Ball.prototype.getEnergy = // getMass
+    /** Returns the energy of the ball */
     function () {
-        return this.getMass() * (this.vx * this.vx + this.vy * this.vy) / 2;
+        return this.getMass() * (this.v * this.v + this.w * this.w) / 2;
     };
     Ball.prototype.getMomentum = // getEnergy
+    /** Returns the momentum of the ball */
     function () {
         var mass = this.getMass();
         return {
-            x: mass * this.vx,
-            y: mass * this.vy
+            x: mass * this.v,
+            y: mass * this.w
         };
     };
     Ball.prototype.ellipse = // getMomentum
@@ -80,73 +83,104 @@ var Ball = (function () {
         ctx.restore();
     };
     Ball.prototype.collisionTime = // draw
+    /**
+    * Returns the time of the first future collision between this ball and another ball.
+    * Returns null if the balls do not collide
+    * @param other the other ball
+    */
     function (other) {
-        var dvx = this.vx - other.vx;
-        var dvy = this.vy - other.vy;
+        var dv = this.v - other.v;
+        var dw = this.w - other.w;
         var dx = this.x - other.x;
         var dy = this.y - other.y;
-        var p = -(dvx * dx + dvy * dy);
-        if(p <= 0) {
+        var p = (dv * dx + dw * dy);
+        if(p >= 0) {
             // The balls are moving apart or parallel
-            return undefined;
+            return null;
         }
-        var dv2 = dvx * dvx + dvy * dvy;
+        var dv2 = dv * dv + dw * dw;
         var r = this.radius + other.radius;
-        var q = dv2 * r * r - Math.pow(dvx * dy - dvy * dx, 2);
+        var q = dv2 * r * r - Math.pow(dv * dy - dw * dx, 2);
         if(q < 0) {
-            return undefined;
+            // No real solution: the balls do not collide
+            return null;
         }
         q = Math.sqrt(q);
-        if(p >= q) {
-            return (p - q) / dv2;
+        if(p <= q) {
+            return (-p - q) / dv2;
         }
-        return (p + q) / dv2;
+        return (-p + q) / dv2;
     };
     Ball.prototype.sideCollisionTime = // collisionTime
-    function (c, v, min, max) {
+    /**
+    * Returns the time of the first future collision with a side of the table.
+    * Returns null if there is no collision.
+    * @param x ball horizontal or vertical position
+    * @param v ball horizontal or vertical speed
+    * @param min minumum horizontal or vertical position (i.e. co-ordinate of one side of the table)
+    * @param max maximum horizontal or vertical position (i.e. co-ordinate of the other side of the table)
+    */
+    function (x, v, min, max) {
         if(v === 0) {
-            return undefined;
+            // Not moving towards the sides: no collision
+            return null;
         }
         var result;
         if(v < 0) {
             // Moving up/left - check agains the minumum
-            result = (min - c + this.radius) / v;
+            result = (min - x + this.radius) / v;
         } else {
             // Moving down/right - check agains the maximum
-            result = (max - c - this.radius) / v;
+            result = (max - x - this.radius) / v;
         }
         if(result >= 0) {
             return result;
         }
-        return undefined;
+        return null;
     };
     Ball.prototype.sideXCollisionTime = // sideCollisionTime
+    /**
+    * Returns the time of the first future collision with the left or right sides of the table.
+    * Returns null if there is no collision.
+    * @param min minumum horizontal position (i.e. x co-ordinate of the left side of the table)
+    * @param max maximum horizontal position (i.e. x co-ordinate of the right side of the table)
+    */
     function (min, max) {
-        return this.sideCollisionTime(this.x, this.vx, min, max);
+        return this.sideCollisionTime(this.x, this.v, min, max);
     };
     Ball.prototype.sideYCollisionTime = // sideXCollisionTime
+    /**
+    * Returns the time of the first future collision with the top or bottom sides of the table.
+    * Returns null if there is no collision.
+    * @param min minumum vertical position (i.e. y co-ordinate of the top side of the table)
+    * @param max maximum vertical position (i.e. y co-ordinate of the bottom side of the table)
+    */
     function (min, max) {
-        return this.sideCollisionTime(this.y, this.vy, min, max);
+        return this.sideCollisionTime(this.y, this.w, min, max);
     };
     Ball.prototype.collide = // sideYCollisionTime
+    /**
+    * Updates the velocities of this ball and another one after a collision
+    * The coordinate of the balls must be at the collision point.
+    * @param otherBall second colliding ball
+    * @param restitution coefficient of restitution for a ball-ball collision
+    */
     function (otherBall, restitution) {
-        // http://www.plasmaphysics.org.uk/collision2d.htm
-        var mRatio = Math.pow(otherBall.radius / this.radius, 3);// m2 / m1 - we assume the same density
-        
-        var dvx = this.vx - otherBall.vx;
-        var dvy = this.vy - otherBall.vy;
-        var gammaV = Math.atan2(dvy, dvx);
+        // See http://mimosite.com/blog/post/2013/05/13/Billiard-simulation-part-3-collision-between-two-balls
         var dx = this.x - otherBall.x;
         var dy = this.y - otherBall.y;
-        var gammaXY = Math.atan2(dy, dx);
-        var d = Math.sqrt(dx * dx + dy * dy);
-        var alpha = Math.asin(d * Math.sin(gammaV - gammaXY) / (this.radius + otherBall.radius));
-        var a = Math.tan(gammaV + alpha);
-        var deltaVx2 = (restitution + 1) * (dvx + a * dvy) / ((1 + a * a) * (1 + mRatio));
-        otherBall.vx = otherBall.vx + deltaVx2;
-        otherBall.vy = otherBall.vy + a * deltaVx2;
-        this.vx = this.vx - mRatio * deltaVx2;
-        this.vy = this.vy - a * mRatio * deltaVx2;
+        var dv = this.v - otherBall.v;
+        var dw = this.w - otherBall.w;
+        var alpha = Math.atan2(dy, dx);
+        var sinAlpha = Math.sin(alpha);
+        var cosAlpha = Math.cos(alpha);
+        var m1 = Math.pow(this.radius, 3);
+        var m2 = Math.pow(otherBall.radius, 3);
+        var a = (1 + restitution) / (m1 + m2) * (cosAlpha * dv + sinAlpha * dw);
+        this.v = -m2 * a * cosAlpha + this.v;
+        this.w = -m2 * a * sinAlpha + this.w;
+        otherBall.v = m1 * a * cosAlpha + otherBall.v;
+        otherBall.w = m1 * a * sinAlpha + otherBall.w;
     };
     return Ball;
 })();
@@ -233,7 +267,7 @@ var RPool = (function () {
         
     ];
     RPool.fromLeftFourHorizontal = [
-        new Ball(100, 150, 40, 0, 10, "black"), 
+        new Ball(100, 150, 40, 0, 15, "black"), 
         new Ball(200, 150, 0, 0, 10, "red"), 
         new Ball(220, 150, 0, 0, 10, "yellow"), 
         new Ball(240, 150, 0, 0, 10, "yellow"), 
@@ -396,20 +430,20 @@ var RPool = (function () {
             if(mint > 0) {
                 for(var i = 0; i < this.balls.length; i++) {
                     var ball = this.balls[i];
-                    var dx = ball.vx * mint;
-                    var dy = ball.vy * mint;
+                    var dx = ball.v * mint;
+                    var dy = ball.w * mint;
                     ball.x += dx;
                     ball.y += dy;
                     var ds2 = dx * dx + dy * dy;
                     if(ds2 > 0) {
                         var delta = Math.sqrt(ds2) / ball.radius;
-                        var alpha = Math.atan2(ball.vy, ball.vx);
+                        var alpha = Math.atan2(ball.w, ball.v);
                         var newPhi = alpha + Math.atan2(Math.sin(ball.theta) * Math.sin(ball.phi - alpha), Math.sin(ball.theta) * Math.cos(ball.phi - alpha) * Math.cos(delta) + Math.cos(ball.theta) * Math.sin(delta));
                         var newTheta = Math.acos(-Math.sin(ball.theta) * Math.cos(ball.phi - alpha) * Math.sin(delta) + Math.cos(ball.theta) * Math.cos(delta));
                         ball.theta = newTheta;
                         ball.phi = newPhi;
                     }
-                    var speed2 = ball.vx * ball.vx + ball.vy * ball.vy;
+                    var speed2 = ball.v * ball.v + ball.w * ball.w;
                     if(speed2 > 0) {
                         var airResistanceDecelleration = this.parameters.airDragFactor * speed2 / ball.radius;
                         var rollingResistanceDecelleration = this.parameters.rollingResistance * this.parameters.g;
@@ -417,11 +451,11 @@ var RPool = (function () {
                         var speed = Math.sqrt(speed2);
                         var newSpeed = speed - totalDecelleration * mint;
                         if(newSpeed <= 0) {
-                            ball.vx = 0;
-                            ball.vy = 0;
+                            ball.v = 0;
+                            ball.w = 0;
                         } else {
-                            ball.vx = ball.vx * newSpeed / speed;
-                            ball.vy = ball.vy * newSpeed / speed;
+                            ball.v = ball.v * newSpeed / speed;
+                            ball.w = ball.w * newSpeed / speed;
                         }
                     }
                 }
@@ -430,17 +464,17 @@ var RPool = (function () {
                 var bounce = bounces[i];
                 switch(bounce.type) {
                     case "x":
-                        this.audioBallSide.volume = Math.min(this.maxSpeed, Math.abs(bounce.b1.vx)) / this.maxSpeed;
+                        this.audioBallSide.volume = Math.min(this.maxSpeed, Math.abs(bounce.b1.v)) / this.maxSpeed;
                         this.audioBallSide.play();
-                        bounce.b1.vx = -bounce.b1.vx * this.parameters.sideRestitution;
+                        bounce.b1.v = -bounce.b1.v * this.parameters.sideRestitution;
                         break;
                     case "y":
-                        this.audioBallSide.volume = Math.min(this.maxSpeed, Math.abs(bounce.b1.vy)) / this.maxSpeed;
+                        this.audioBallSide.volume = Math.min(this.maxSpeed, Math.abs(bounce.b1.w)) / this.maxSpeed;
                         this.audioBallSide.play();
-                        bounce.b1.vy = -bounce.b1.vy * this.parameters.sideRestitution;
+                        bounce.b1.w = -bounce.b1.w * this.parameters.sideRestitution;
                         break;
                     case "b":
-                        var relativeSpeed = Math.abs((bounce.b1.vx - bounce.b2.vx) * (bounce.b1.x - bounce.b2.x) + (bounce.b1.vy - bounce.b2.vy) * (bounce.b1.y - bounce.b2.y));
+                        var relativeSpeed = Math.abs((bounce.b1.v - bounce.b2.v) * (bounce.b1.x - bounce.b2.x) + (bounce.b1.w - bounce.b2.w) * (bounce.b1.y - bounce.b2.y));
                         this.audioBallBall.volume = Math.min(this.maxSpeed, relativeSpeed) / this.maxSpeed;
                         this.audioBallBall.play();
                         bounce.b1.collide(bounce.b2, this.parameters.ballRestitution);
@@ -491,3 +525,4 @@ $(function () {
     });
     game.start();
 });
+//@ sourceMappingURL=app.js.map
