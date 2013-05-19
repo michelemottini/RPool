@@ -182,6 +182,51 @@ class Ball {
     otherBall.w = m1 * a * sinAlpha + otherBall.w;
   } // collide
 
+  /**
+   * Updates the ball position, applying the current velocity for a specified time interval
+   * @param t the time interval to use. The velocity is considered constant, so the time interval 
+   * must be small compared to the rate of change of the velocity
+   */
+  updatePosition(t: number) {
+    var dx = this.v * t;
+    var dy = this.w * t
+    this.x += dx;
+    this.y += dy;
+    var ds2 = dx * dx + dy * dy;
+    if (ds2 > 0) {
+      var delta = Math.sqrt(ds2) / this.radius;
+      var alpha = Math.atan2(this.w, this.v);
+      var newPhi = alpha + Math.atan2(Math.sin(this.theta) * Math.sin(this.phi - alpha), Math.sin(this.theta) * Math.cos(this.phi - alpha) * Math.cos(delta) + Math.cos(this.theta) * Math.sin(delta));
+      var newTheta = Math.acos(-Math.sin(this.theta) * Math.cos(this.phi - alpha) * Math.sin(delta) + Math.cos(this.theta) * Math.cos(delta));
+      this.theta = newTheta;
+      this.phi = newPhi;
+    }
+  } // updatePosition
+
+  /**
+   * Updates the ball velocity, applying rolling resistance and air drag for a specified time interval
+   * @param t the time interval to use. Only first-order effects are considered, so the time interval 
+   * must be small compared to the rate of change of the velocity
+   * @param airDragFactor 
+   * @param rollingResistanceDecelleration
+   */
+  updateVelocity(t: number, airDragFactor: number, rollingResistanceDecelleration: number) {
+    var speed2 = this.v * this.v + this.w * this.w;
+    if (speed2 > 0) {
+      var airResistanceDecelleration = airDragFactor * speed2 / this.radius;
+      var totalDecelleration = airResistanceDecelleration + rollingResistanceDecelleration;
+      var speed = Math.sqrt(speed2);
+      var newSpeed = speed - totalDecelleration * t;
+      if (newSpeed <= 0) {
+        this.v = 0;
+        this.w = 0;
+      } else {
+        this.v = this.v * newSpeed / speed;
+        this.w = this.w * newSpeed / speed;
+      }
+    }
+  } // updateVelocity
+
 } // class Ball
 
 var poolParameters = {
@@ -219,119 +264,11 @@ class RPool {
   private maxSpeed = 100;
   private stepTime = 1 / 30;
   
-
-  private static fromLeft = [
-    new Ball(100, 150, 40, 0, 10, "black"),
-    new Ball(200, 150, 0, 0, 10, "red"),
-  ];
-
-  private static fromRight = [
-    new Ball(300, 150, -40, 0, 10, "black"),
-    new Ball(200, 150, 0, 0, 10, "red"),
-  ];
-
-  private static fromTop = [
-    new Ball(200, 75, 0, 40, 10, "black"),
-    new Ball(200, 150, 0, 0, 10, "red"),
-  ];
-
-  private static fromBottom = [
-    new Ball(200, 225, 0, -40, 10, "black"),
-    new Ball(200, 150, 0, 0, 10, "red"),
-  ];
-
-  private static fromTopLeft = [
-    new Ball(150, 100, 20, 20, 10, "black"),
-    new Ball(200, 150, 0, 0, 10, "red"),
-  ];
-
-  private static toTopLeftCorner = [
-    new Ball(75, 75, -20, -20, 10, "black"),
-    new Ball(50, 50, 0, 0, 10, "red"),
-  ];
-
-  private static fromLeftTwoHorizontal = [
-    new Ball(100, 150, 40, 0, 10, "black"),
-    new Ball(200, 150, 0, 0, 10, "red"),
-    new Ball(220, 150, 0, 0, 10, "yellow"),
-  ];
-
-  private static fromLeftFourHorizontal = [
-    new Ball(100, 150, 40, 0, 15, "black"),
-    new Ball(200, 150, 0, 0, 10, "red"),
-    new Ball(220, 150, 0, 0, 10, "yellow"),
-    new Ball(240, 150, 0, 0, 10, "yellow"),
-    new Ball(260, 150, 0, 0, 10, "yellow"),
-  ];
-
-  private static fromLeftTwoVertical = [
-    new Ball(100, 150, 40, 0, 10, "black"),
-    new Ball(200, 140, 0, 0, 10, "red"),
-    new Ball(200, 160, 0, 0, 10, "yellow"),
-  ];
-
-  private static onLeftBorder = [
-    new Ball(75, 150, -20, 0, 10, "black"),
-    new Ball(10, 150, 0, 0, 10, "red"),
-  ];
-
-  private static fromLeftAbove = [
-    new Ball(100, 140, 40, 0, 15, "black"),
-    new Ball(200, 150, 0, 0, 15, "red"),
-  ];
-
-  private static fromLeftBelow = [
-    new Ball(100, 160, 40, 0, 15, "black"),
-    new Ball(200, 150, 0, 0, 15, "red"),
-  ];
-
-  private static fromLeftGlanceAbove = [
-    new Ball(100, 120, 40, 0, 15, "black"),
-    new Ball(200, 150, 0, 0, 15, "red"),
-  ];
-
-  private static fromLeftGlanceBelow = [
-    new Ball(100, 180, 40, 0, 15, "black"),
-    new Ball(200, 150, 0, 0, 15, "red"),
-  ];
-
-  private static fromTopLeftAbove = [
-    new Ball(50, 120, 20, 20, 15, "black"),
-    new Ball(100, 200, -20, -20, 15, "red"),
-  ];
-
-  private static fromTopLeftBelow = [
-    new Ball(50, 180, 20, 20, 15, "black"),
-    new Ball(100, 200, -20, -20, 15, "red"),
-  ];
-
-  private static fromTopLeft2 = [
-    new Ball(50, 150, 20, 20, 15, "black"),
-    new Ball(100, 200, -20, -20, 15, "red"),
-  ];
-
-  private static fromTopRightAbove = [
-    new Ball(200, 80, -20, 20, 15, "black"),
-    new Ball(100, 200, 20, -20, 15, "red"),
-  ];
-
-  private static single = [
-    new Ball(20, 50, 40, 0, 20, "red"),
-  ];
-
-  private static test = [
-    new Ball(100, 50, 40, 40, 15, "red"),
-    new Ball(200, 80, -40, -40, 12, "blue"),
-    new Ball(200, 150, 0, 0, 12, "orange"),
-    new Ball(220, 180, -10, 15, 12, "magenta"),
-    new Ball(300, 180, 0, -35, 12, "cyan"),
-  ];
-
-  constructor (canvas: HTMLCanvasElement) {
+  constructor (canvas: HTMLCanvasElement, balls: Ball[]) {
     canvas.width = 400;
     canvas.height = 300;
     this.canvas = canvas;
-    this.balls = RPool.test;
+    this.balls = balls;
     this.draw();
   } // constructor
 
@@ -366,129 +303,225 @@ class RPool {
     }
   } // draw
 
+  /**
+   * Detect the first collision(s) that happen within the specified time interval
+   * Returns an object with the time of the collision and the list of the collisions happening
+   * at that time - that is empty if there are no collisions within the specified time
+   * @param dt the time interval to consider
+   * @param minx minimum x coordinate - i.e. the left side of the table as seen on the screen
+   * @param maxx maximum x coordinate - i.e. the right side of the table as seen on the screen
+   * @param miny minimum y coordinate - i.e. the top side of the table as seen on the screen
+   * @param maxy maximum y coordinate - i.e. the bottom side of the table as seen on the screen
+   */
+  private detectCollisions(dt: number, minx: number, maxx: number, miny: number, maxy: number) {
+    var result = {
+      t: dt,
+      collisions: <{ type: string; b1: Ball; b2: Ball; }[]>[]
+    }
+    var addCollision = (t, collision) => {
+      if (t === result.t) {
+        // The new collision happens at the exact same time of the current one, it has to be added to the list
+        result.collisions.push(collision);
+      } else {
+        // The new collision happens before the current one, so it replaces the entire list
+        result.collisions = [collision];
+        result.t = t;
+      }
+    }
+    for (var i = 0; i < this.balls.length; i++) {
+      // Collisions with the sides
+      var ball = this.balls[i];
+      var t = ball.sideXCollisionTime(minx, maxx);
+      if (t && t <= result.t) {
+        addCollision(t, { type: "x", b1: ball, b2: <Ball>null });
+      }
+      t = ball.sideYCollisionTime(miny, maxy);
+      if (t && t <= result.t) {
+        addCollision(t, { type: "y", b1: ball, b2: <Ball>null });
+      }
+      // Ball-ball collisions
+      for (var j = i + 1; j < this.balls.length; j++) {
+        var otherBall = this.balls[j];
+        t = ball.collisionTime(otherBall);
+        if (t && t <= result.t) {
+          addCollision(t, { type: "b", b1: ball, b2: otherBall });
+        }
+      }
+    }
+    return result;
+  } // detectCollisions
+
   private update(dt: number) {
     while (dt > 0) {
-      var bounces = [];
-      var mint = dt;
-      for (var i = 0; i < this.balls.length; i++) {
-        var ball = this.balls[i];
-        var t = ball.sideXCollisionTime(0, 400);
-        if (t != undefined && t <= mint) {
-          var bounce = { type: "x", b1: ball, b2: <Ball>null };
-          if (t === mint) {
-            bounces.push(bounce);
-          } else {
-            bounces = [bounce];
-            mint = t;
-          }
-        }
-        t = ball.sideYCollisionTime(0, 300);
-        if (t != undefined && t <= mint) {
-          var bounce = { type: "y", b1: ball, b2: <Ball>null };
-          if (t === mint) {
-            bounces.push(bounce);
-          } else {
-            bounces = [bounce];
-            mint = t;
-          }
-        }
-        for (var j = i + 1; j < this.balls.length; j++) {
-          var otherBall = this.balls[j];
-          t = ball.collisionTime(otherBall);
-          if (t != undefined && t <= mint) {
-            var bounce = { type: "b", b1: ball, b2: otherBall };
-            if (t === mint) {
-              bounces.push(bounce);
-            } else {
-              bounces = [bounce];
-              mint = t;
-            }
-          }
-        }
-      }
-      if (mint > 0) {
+      var firstCollisions = this.detectCollisions(dt, 0, 400, 0, 300);
+      if (firstCollisions.t > 0) {
+        // The balls move freely up to the time of the first collision: update their positions and velocities accordingly
         for (var i = 0; i < this.balls.length; i++) {
           var ball = this.balls[i];
-          var dx = ball.v * mint;
-          var dy = ball.w * mint
-          ball.x += dx;
-          ball.y += dy;
-          var ds2 = dx * dx + dy * dy;
-          if (ds2 > 0) {
-            var delta = Math.sqrt(ds2) / ball.radius;
-            var alpha = Math.atan2(ball.w, ball.v);
-            var newPhi = alpha + Math.atan2(Math.sin(ball.theta) * Math.sin(ball.phi - alpha), Math.sin(ball.theta) * Math.cos(ball.phi - alpha) * Math.cos(delta) + Math.cos(ball.theta) * Math.sin(delta));
-            var newTheta = Math.acos(-Math.sin(ball.theta) * Math.cos(ball.phi - alpha) * Math.sin(delta) + Math.cos(ball.theta) * Math.cos(delta));
-            ball.theta = newTheta;
-            ball.phi = newPhi;
-          }
-          var speed2 = ball.v * ball.v + ball.w * ball.w;
-          if (speed2 > 0) {
-            var airResistanceDecelleration = this.parameters.airDragFactor * speed2 / ball.radius;
-            var rollingResistanceDecelleration = this.parameters.rollingResistance * this.parameters.g;
-            var totalDecelleration = airResistanceDecelleration + rollingResistanceDecelleration;
-            var speed = Math.sqrt(speed2);
-            var newSpeed = speed - totalDecelleration * mint;
-            if (newSpeed <= 0) {
-              ball.v = 0;
-              ball.w = 0;
-            } else {
-              ball.v = ball.v * newSpeed / speed;
-              ball.w = ball.w * newSpeed / speed;
-            }
-          }
+          ball.updatePosition(firstCollisions.t);
+          ball.updateVelocity(firstCollisions.t, this.parameters.airDragFactor, this.parameters.rollingResistance * this.parameters.g);
         }
       }
-      for (var i = 0; i < bounces.length; i++) {
-        var bounce = bounces[i];
-        switch (bounce.type) {
+      // Compute the new velocities after the collisions
+      for (var i = 0; i < firstCollisions.collisions.length; i++) {
+        var collision = firstCollisions.collisions[i];
+        switch (collision.type) {
           case "x":
-            this.audioBallSide.volume = Math.min(this.maxSpeed, Math.abs(bounce.b1.v)) / this.maxSpeed;
+            this.audioBallSide.volume = Math.min(this.maxSpeed, Math.abs(collision.b1.v)) / this.maxSpeed;
             this.audioBallSide.play();
-            bounce.b1.v = -bounce.b1.v * this.parameters.sideRestitution;
+            collision.b1.v = -collision.b1.v * this.parameters.sideRestitution;
             break;
           case "y":
-            this.audioBallSide.volume = Math.min(this.maxSpeed, Math.abs(bounce.b1.w)) / this.maxSpeed;
+            this.audioBallSide.volume = Math.min(this.maxSpeed, Math.abs(collision.b1.w)) / this.maxSpeed;
             this.audioBallSide.play();
-            bounce.b1.w = -bounce.b1.w * this.parameters.sideRestitution;
+            collision.b1.w = -collision.b1.w * this.parameters.sideRestitution;
             break;
           case "b":
-            var relativeSpeed = Math.abs((bounce.b1.v - bounce.b2.v) * (bounce.b1.x - bounce.b2.x) + (bounce.b1.w - bounce.b2.w) * (bounce.b1.y - bounce.b2.y));
+            var relativeSpeed = Math.abs((collision.b1.v - collision.b2.v) * (collision.b1.x - collision.b2.x) + (collision.b1.w - collision.b2.w) * (collision.b1.y - collision.b2.y));
             this.audioBallBall.volume = Math.min(this.maxSpeed, relativeSpeed) / this.maxSpeed;
             this.audioBallBall.play();
-            bounce.b1.collide(bounce.b2, this.parameters.ballRestitution);
+            collision.b1.collide(collision.b2, this.parameters.ballRestitution);
             break;
         }
       }
-      dt -= mint;
+      // Continue with the remaining time
+      dt -= firstCollisions.t;
     }
     this.draw();
   } // update
 
   start() {
-    if (this.timerToken === undefined) {
+    if (!this.timerToken) {
       this.timerToken = setInterval(() => this.update(this.stepTime), this.stepTime * 1000);
     }
   } // start
 
   stop() {
-    if (this.timerToken !== undefined) {
+    if (this.timerToken) {
       clearTimeout(this.timerToken);
       this.timerToken = undefined;
     }
   } // stop
 
   step() {
-    if (this.timerToken === undefined) {
+    if (!this.timerToken) {
       this.update(this.stepTime);
     }
   } // step
 
 } // class RPool
 
+var initialBalls = {
+  fromLeft: [
+     new Ball(100, 150, 40, 0, 10, "black"),
+     new Ball(200, 150, 0, 0, 10, "red"),
+  ],
+  fromRight: [
+    new Ball(300, 150, -40, 0, 10, "black"),
+    new Ball(200, 150, 0, 0, 10, "red"),
+  ],
+  fromTop: [
+    new Ball(200, 75, 0, 40, 10, "black"),
+    new Ball(200, 150, 0, 0, 10, "red"),
+  ],
+  fromBottom: [
+    new Ball(200, 225, 0, -40, 10, "black"),
+    new Ball(200, 150, 0, 0, 10, "red"),
+  ],
+  fromTopLeft: [
+    new Ball(150, 100, 20, 20, 10, "black"),
+    new Ball(200, 150, 0, 0, 10, "red"),
+  ],
+  toTopLeftCorner: [
+    new Ball(75, 75, -20, -20, 10, "black"),
+    new Ball(50, 50, 0, 0, 10, "red"),
+  ],
+  fromLeftTwoHorizontal: [
+    new Ball(100, 150, 40, 0, 10, "black"),
+    new Ball(200, 150, 0, 0, 10, "red"),
+    new Ball(220, 150, 0, 0, 10, "yellow"),
+  ],
+  fromLeftFourHorizontal: [
+    new Ball(100, 150, 40, 0, 15, "black"),
+    new Ball(200, 150, 0, 0, 10, "red"),
+    new Ball(220, 150, 0, 0, 10, "yellow"),
+    new Ball(240, 150, 0, 0, 10, "yellow"),
+    new Ball(260, 150, 0, 0, 10, "yellow"),
+  ],
+  fromLeftTwoVertical: [
+    new Ball(100, 150, 40, 0, 10, "black"),
+    new Ball(200, 140, 0, 0, 10, "red"),
+    new Ball(200, 160, 0, 0, 10, "yellow"),
+  ],
+  onLeftBorder: [
+    new Ball(75, 150, -20, 0, 10, "black"),
+    new Ball(10, 150, 0, 0, 10, "red"),
+  ],
+  fromLeftAbove: [
+    new Ball(100, 140, 40, 0, 15, "black"),
+    new Ball(200, 150, 0, 0, 15, "red"),
+  ],
+  fromLeftBelow: [
+    new Ball(100, 160, 40, 0, 15, "black"),
+    new Ball(200, 150, 0, 0, 15, "red"),
+  ],
+  fromLeftGlanceAbove: [
+   new Ball(100, 120, 40, 0, 15, "black"),
+   new Ball(200, 150, 0, 0, 15, "red"),
+  ],
+  fromLeftGlanceBelow: [
+    new Ball(100, 180, 40, 0, 15, "black"),
+    new Ball(200, 150, 0, 0, 15, "red"),
+  ],
+  fromTopLeftAbove: [
+    new Ball(50, 120, 20, 20, 15, "black"),
+    new Ball(100, 200, -20, -20, 15, "red"),
+  ],
+  fromTopLeftBelow: [
+    new Ball(50, 180, 20, 20, 15, "black"),
+    new Ball(100, 200, -20, -20, 15, "red"),
+  ],
+  fromTopLeft2: [
+    new Ball(50, 150, 20, 20, 15, "black"),
+    new Ball(100, 200, -20, -20, 15, "red"),
+  ],
+  fromTopRightAbove: [
+    new Ball(200, 80, -20, 20, 15, "black"),
+    new Ball(100, 200, 20, -20, 15, "red"),
+  ],
+  single: [
+    new Ball(20, 50, 40, 0, 20, "red"),
+  ],
+  test: [
+    new Ball(100, 50, 40, 40, 15, "red"),
+    new Ball(200, 80, -40, -40, 12, "blue"),
+    new Ball(200, 150, 0, 0, 12, "orange"),
+    new Ball(220, 180, -10, 15, 12, "magenta"),
+    new Ball(300, 180, 0, -35, 12, "cyan"),
+  ],
+};
+
+function getQueryParams(qs: string) {
+  qs = qs.split("+").join(" ");
+  var re = /[?&]?([^=]+)=([^&]*)/;
+  var params = {};
+  var tokens: RegExpExecArray;
+  var index = 0;
+  while (tokens = re.exec(qs.substr(index))) {
+    params[decodeURIComponent(tokens[1])] = decodeURIComponent(tokens[2]);
+    index += tokens.index + tokens[0].length;
+  }
+  return params;
+} // getQueryParams
+
 $(() => {
   var canvas = <HTMLCanvasElement> document.getElementById('canvas');
-  var game = new RPool(canvas);
+  var ballsName = getQueryParams(document.location.search)["init"] || "test";
+  var balls = <Ball[]>(initialBalls[ballsName] || []);
+  if (balls.length === 0) {
+    alert("There is no initial ball set '" + ballsName + "'");
+  }
+  var game = new RPool(canvas, balls);
   $("#start").click(event => game.start());
   $("#stop").click(event => game.stop());
   $("#step").click(event => game.step());
