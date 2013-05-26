@@ -207,20 +207,26 @@ class Ball {
    * Updates the ball velocity, applying rolling resistance and air drag for a specified time interval
    * @param t the time interval to use. Only first-order effects are considered, so the time interval 
    * must be small compared to the rate of change of the velocity
-   * @param airDragFactor 
-   * @param rollingResistanceDecelleration
+   * @param airDragFactor total air drag factor computed from the ball and air densities and the 
+   * air drag coefficient (assumed to be constant)
+   * @param rollingResistanceDeceleration total rolling resistance deceleration computed from the 
+   * rolling resistance coefficient and the gravitational acceleration
    */
-  updateVelocity(t: number, airDragFactor: number, rollingResistanceDecelleration: number) {
+  updateVelocity(t: number, airDragFactor: number, rollingResistanceDeceleration: number) {
+    // See http://mimosite.com/blog/post/2013/05/26/Billiard-simulation-part-5-friction
     var speed2 = this.v * this.v + this.w * this.w;
     if (speed2 > 0) {
-      var airResistanceDecelleration = airDragFactor * speed2 / this.radius;
-      var totalDecelleration = airResistanceDecelleration + rollingResistanceDecelleration;
+      var airResistanceDeceleration = airDragFactor * speed2 / this.radius;
+      var totalDeceleration = airResistanceDeceleration + rollingResistanceDeceleration;
       var speed = Math.sqrt(speed2);
-      var newSpeed = speed - totalDecelleration * t;
+      var newSpeed = speed - totalDeceleration * t;
       if (newSpeed <= 0) {
+        // The ball stopped
         this.v = 0;
         this.w = 0;
       } else {
+        // Update the speed, keeping the velocity direction the same (the air drag and rolling resistance 
+        // forces are in the exact opposite direction of the velocity)
         this.v = this.v * newSpeed / speed;
         this.w = this.w * newSpeed / speed;
       }
@@ -233,6 +239,7 @@ var poolParameters = {
   // From http://www.billiards.colostate.edu/threads/physics.html, converted to MKs
   ballRadius: 2.25 * 2.54 / 100 / 2,
   ballMass: 6 / 35.2739619,
+  ballDensity: 1, // place holder
   ballBallFriction: 0.05,   // 0.03 - 0.028
   ballBallRestitution: 0.95,  // 0.92 - 0.98
   ballClothRollingResistance: 0.01,  // 0.005 - 0.015
@@ -244,7 +251,12 @@ var poolParameters = {
   cueTipBallRestitution: 0.75,  // 0.71-0.75 (leather tip), 0.81-0.87 (phenolic tip) 
   tableWidth: 1.93,
   tableHeight: 0.965,
+  // From http://www.grc.nasa.gov/WWW/k-12/airplane/airprop.html
+  airDensity: 1.229,
+  // From http://www.grc.nasa.gov/WWW/k-12/airplane/dragsphere.html
+  sphereDragCoefficient: 0.5
 };
+poolParameters.ballDensity = poolParameters.ballMass / (4 / 3 * Math.PI * Math.pow(poolParameters.ballRadius, 3));
 
 class RPool {
 
@@ -254,8 +266,7 @@ class RPool {
     ballRestitution: poolParameters.ballBallRestitution,
     rollingResistance: poolParameters.ballClothRollingResistance,
     g: 9.81,
-    ballDensity: poolParameters.ballMass / (4/3*Math.PI*Math.pow(poolParameters.ballRadius, 3)), 
-    airDragFactor: 3 / 8 * 0.47 * 1.2 / (poolParameters.ballMass / (4 / 3 * Math.PI * Math.pow(poolParameters.ballRadius, 3))),
+    airDragFactor: 3 / 8 * poolParameters.sphereDragCoefficient * poolParameters.airDensity / poolParameters.ballDensity,
   };
   private balls: Ball[] = [];
   private timerToken: number;
