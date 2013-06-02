@@ -2,8 +2,12 @@
 
 class Ball {
 
-  theta = 0;
-  phi = 0;
+  /** Radius of the white circle drawn on the ball */
+  private circleRadius = 4;
+  /** First angle describing the orientation of the ball - that is also position of the white circle center */
+  private phi = 0;
+  /** Seccond angle describing the orientation of the ball - that is also position of the white circle center */
+  private theta = 0;
 
   constructor(public x: number, public y: number, public v: number, public w: number, public radius: number, public color: string) {
   } // constructor
@@ -27,55 +31,47 @@ class Ball {
     }
   } // getMomentum
 
-  private ellipse(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
-    var kappa = .5522848,
-      ox = (w / 2) * kappa, // control point offset horizontal
-      oy = (h / 2) * kappa, // control point offset vertical
-      xe = x + w,           // x-end
-      ye = y + h,           // y-end
-      xm = x + w / 2,       // x-middle
-      ym = y + h / 2;       // y-middle
-
-    ctx.moveTo(x, ym);
-    ctx.bezierCurveTo(x, ym - oy, xm - ox, y, xm, y);
-    ctx.bezierCurveTo(xm + ox, y, xe, ym - oy, xe, ym);
-    ctx.bezierCurveTo(xe, ym + oy, xm + ox, ye, xm, ye);
-    ctx.bezierCurveTo(xm - ox, ye, x, ym + oy, x, ym);
-    ctx.closePath();
-  } // ellipse
-
+  /**
+   * draw: draws the ball
+   * @param ctx the canvas rendering context to use to draw the ball
+   */
   draw(ctx: CanvasRenderingContext2D) {
     ctx.save();
+    // Move the coordinates to the center of the ball - simplifies everything else
     ctx.translate(this.x, this.y);
-    var gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius*3);
-    gradient.addColorStop(0, this.color);
-    gradient.addColorStop(1, "black");
+    // Gradient from the ball color to black, used to shade the ball color to give an illusion of depth
+    var ballColorGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius*3);
+    ballColorGradient.addColorStop(0, this.color);
+    ballColorGradient.addColorStop(1, "black");
+    // Gradient from white to black, used to shade the white circle to give an illusion of depth
     var whiteGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius * 3);
     whiteGradient.addColorStop(0, "white");
     whiteGradient.addColorStop(1, "black");
-    ctx.fillStyle = gradient;
+    // Draw the ball: a circle filled with the ball color shading to black
+    ctx.fillStyle = ballColorGradient
     ctx.beginPath();
     ctx.arc(0, 0, this.radius, 0, Math.PI*2);
     ctx.fill();
     if (this.theta < Math.PI / 2) {
+      // Draw the white circle if it is visible - see http://mimosite.com/blog/post/2013/06/02/Billiard-simulation-part-6-balls-rotation
       var d = this.radius * Math.sin(this.theta);
-      var r = 4;
       var cosTheta = Math.cos(this.theta);
-      var s = r * cosTheta;
+      var s = this.circleRadius * cosTheta;
       if (d - s < this.radius) {
         var cosPhi = Math.cos(this.phi);
         var sinPhi = Math.sin(this.phi);
-        ctx.fillStyle = whiteGradient;
-        ctx.save();
+        // Clip to the ball's circle - do not want to draw parts of the white circle that fall outside the ball borders
         ctx.clip();
+        // Move the coordinates to the center of the white circle
         ctx.translate(d * cosPhi, d * sinPhi);
+        // Compress the coordinates by cosTheta in the direction between the center of the white circle and the center of the ball
         ctx.rotate(this.phi);
         ctx.scale(cosTheta, 1);
+        // Draw the white circle
+        ctx.fillStyle = whiteGradient;
         ctx.beginPath();
-        ctx.arc(0, 0, r, 0, 2 * Math.PI);
-        // this .ellipse(ctx, d * cosPhi, d * sinPhi, r, s);
+        ctx.arc(0, 0, this.circleRadius, 0, 2 * Math.PI);
         ctx.fill();
-        ctx.restore();
       }
     }
     ctx.restore();
@@ -183,23 +179,30 @@ class Ball {
   } // collide
 
   /**
-   * Updates the ball position, applying the current velocity for a specified time interval
-   * @param t the time interval to use. The velocity is considered constant, so the time interval 
-   * must be small compared to the rate of change of the velocity
+   * Updates the ball position and orientation, applying the current velocity for a specified time interval
+   * @param t the time interval to use. The velocity is considered constant, so the time interval must be 
+   * small compared to the rate of change of the velocity
    */
   updatePosition(t: number) {
     var dx = this.v * t;
     var dy = this.w * t
+    // Update the ball position
     this.x += dx;
     this.y += dy;
     var ds2 = dx * dx + dy * dy;
     if (ds2 > 0) {
+      // Update the ball orientation - see http://mimosite.com/blog/post/2013/06/02/Billiard-simulation-part-6-balls-rotation
       var delta = Math.sqrt(ds2) / this.radius;
+      var sinDelta = Math.sin(delta);
+      var cosDelta = Math.cos(delta);
       var alpha = Math.atan2(this.w, this.v);
-      var newPhi = alpha + Math.atan2(Math.sin(this.theta) * Math.sin(this.phi - alpha), Math.sin(this.theta) * Math.cos(this.phi - alpha) * Math.cos(delta) + Math.cos(this.theta) * Math.sin(delta));
-      var newTheta = Math.acos(-Math.sin(this.theta) * Math.cos(this.phi - alpha) * Math.sin(delta) + Math.cos(this.theta) * Math.cos(delta));
-      this.theta = newTheta;
-      this.phi = newPhi;
+      var sinTheta = Math.sin(this.theta);
+      var cosTheta = Math.cos(this.theta);
+      var phiAlpha = this.phi - alpha;
+      var sinPhiAlpha = Math.sin(phiAlpha);
+      var cosPhiAlpha = Math.cos(phiAlpha);
+      this.phi = alpha + Math.atan2(sinTheta * sinPhiAlpha, sinTheta * cosPhiAlpha * cosDelta + cosTheta * sinDelta);
+      this.theta = Math.acos(-sinTheta * cosPhiAlpha * sinDelta + cosTheta * cosDelta);
     }
   } // updatePosition
 
