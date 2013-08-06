@@ -1,9 +1,11 @@
-/// <reference path="jquery-1.8.d.ts" />
+/// <reference path="jquery/jquery.d.ts" />
+/// <reference path="jqueryui/jqueryui.d.ts" />
+/// <reference path="jqueryui/jquery.ui.valueslider.d.ts" />
 
 class Ball {
 
-  /** Radius of the white circle drawn on the ball */
-  private circleRadius = 4;
+  /** Radius of the white circle drawn on the ball - relative to the ball radius */
+  private circleRadius = 0.3;
   /** First angle describing the orientation of the ball - that is also position of the white circle center */
   private phi = 0;
   /** Seccond angle describing the orientation of the ball - that is also position of the white circle center */
@@ -34,8 +36,10 @@ class Ball {
   /**
    * draw: draws the ball
    * @param ctx the canvas rendering context to use to draw the ball
+   * @param pixelSize size of a single pixel in the current scaling of the canvas
+   * @param drawVelocity if true the function draws also the velocity vector 
    */
-  draw(ctx: CanvasRenderingContext2D) {
+  draw(ctx: CanvasRenderingContext2D, pixelSize: number, drawVelocity: bool) {
     ctx.save();
     // Move the coordinates to the center of the ball - simplifies everything else
     ctx.translate(this.x, this.y);
@@ -56,11 +60,13 @@ class Ball {
       // Draw the white circle if it is visible - see http://mimosite.com/blog/post/2013/06/02/Billiard-simulation-part-6-balls-rotation
       var d = this.radius * Math.sin(this.theta);
       var cosTheta = Math.cos(this.theta);
-      var s = this.circleRadius * cosTheta;
+      var circleRadius = this.circleRadius * this.radius;
+      var s = circleRadius * cosTheta;
       if (d - s < this.radius) {
         var cosPhi = Math.cos(this.phi);
         var sinPhi = Math.sin(this.phi);
         // Clip to the ball's circle - do not want to draw parts of the white circle that fall outside the ball borders
+        ctx.save();
         ctx.clip();
         // Move the coordinates to the center of the white circle
         ctx.translate(d * cosPhi, d * sinPhi);
@@ -70,9 +76,26 @@ class Ball {
         // Draw the white circle
         ctx.fillStyle = whiteGradient;
         ctx.beginPath();
-        ctx.arc(0, 0, this.circleRadius, 0, 2 * Math.PI);
+        ctx.arc(0, 0, circleRadius, 0, 2 * Math.PI);
         ctx.fill();
+        ctx.restore();
       }
+    }
+    if (drawVelocity && (this.v !== 0 || this.w !== 0)) {
+      ctx.beginPath();
+      ctx.rotate(Math.atan2(this.w, this.v));
+      ctx.moveTo(0, 0);
+      var l = Math.sqrt(this.v * this.v + this.w * this.w) / 5;
+      var lineWidth = pixelSize;
+      var arrowLength = lineWidth * 8;
+      var arrowWidth = lineWidth * 3;
+      ctx.lineTo(l, 0);
+      ctx.lineTo(l - arrowLength, arrowWidth);
+      ctx.moveTo(l, 0);
+      ctx.lineTo(l - arrowLength, -arrowWidth);
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = this.color;
+      ctx.stroke();
     }
     ctx.restore();
   } // draw
@@ -281,46 +304,74 @@ var poolParameters = {
   ballDensity: 1, // place holder
   ballBallFriction: 0.05,   // 0.03 - 0.028
   ballBallRestitution: 0.95,  // 0.92 - 0.98
-  ballClothRollingResistance: 0.01,  // 0.005 - 0.015
+  ballClothRollingResistance: 0.005,  // 0.005 - 0.015
   ballClothSlidingFriction: 0.2, // 0.15 - 0.4
   ballClothSpinDeceleration: 10,  // 5-15 - in rad/sec^2 = sec^-2
   ballSideRestitution: 0.75,  // 0.6 - 0.9
   ballClothRestitution: 0.5,
-  curTipBallFriction: 0.6,
+  cueTipBallFriction: 0.6,
   cueTipBallRestitution: 0.75,  // 0.71-0.75 (leather tip), 0.81-0.87 (phenolic tip) 
   tableWidth: 1.93,
   tableHeight: 0.965,
   // From http://www.grc.nasa.gov/WWW/k-12/airplane/airprop.html
-  airDensity: 1.229,
+  seaLevelAirDensity: 1.229,
   // From http://www.grc.nasa.gov/WWW/k-12/airplane/dragsphere.html
-  sphereDragCoefficient: 0.5
+  sphereDragCoefficient: 0.5,
+  // Traditional...
+  g: 9.81
 };
 poolParameters.ballDensity = poolParameters.ballMass / (4 / 3 * Math.PI * Math.pow(poolParameters.ballRadius, 3));
 
 class RPool {
 
   private canvas: HTMLCanvasElement;
-  private parameters = {
-    sideRestitution: poolParameters.ballSideRestitution,
-    ballRestitution: poolParameters.ballBallRestitution,
-    rollingResistance: poolParameters.ballClothRollingResistance,
-    g: 9.81,
-    airDragFactor: 3 / 8 * poolParameters.sphereDragCoefficient * poolParameters.airDensity / poolParameters.ballDensity,
-  };
+  /** The balls */
   private balls: Ball[] = [];
+  /** Enable the use of the special double collision algorithm */
+  public doubleCollision: bool;
+  public sideRestitution: number;
+  public ballRestitution: number;
+  public rollingResistance: number;
+  public airDensity: number;
   private timerToken: number;
   private audioBallBall = new Audio("sounds/ball-ball.mp3");
   private audioBallSide = new Audio("sounds/ball-side.mp3");
-  private maxSpeed = 100;
+  private maxSpeed = 5;
   private stepTime = 1 / 30;
-  
-  constructor (canvas: HTMLCanvasElement, balls: Ball[]) {
-    canvas.width = 400;
-    canvas.height = 300;
+  private pixelsPerMeter = 200;
+  private tableWidth = poolParameters.tableWidth;
+  private tableHeight = poolParameters.tableHeight;
+  private pixelsBorder = 10;
+
+  constructor(
+    canvas: HTMLCanvasElement,
+    balls: Ball[],
+    doubleCollision: bool,
+    sideRestitution: number,
+    ballRestitution: number,
+    rollingResistance: number,
+    airDensity: number
+  ) {
+    canvas.width = this.pixelsBorder * 2 + this.tableWidth * this.pixelsPerMeter;
+    canvas.height = this.pixelsBorder * 2 + this.tableHeight * this.pixelsPerMeter;
     this.canvas = canvas;
-    this.balls = balls;
-    this.draw();
+    this.doubleCollision = doubleCollision;
+    this.sideRestitution = sideRestitution;
+    this.ballRestitution = ballRestitution;
+    this.rollingResistance = rollingResistance;
+    this.airDensity = airDensity;
+    this.setBalls(balls);
   } // constructor
+
+  setBalls(balls: Ball[]) {
+    var newBalls: Ball[] = [];
+    for (var i = 0; i < balls.length; i++) {
+      var ball = balls[i];
+      newBalls.push(new Ball(ball.x, ball.y, ball.v, ball.w, ball.radius, ball.color));
+    }
+    this.balls = newBalls;
+    this.draw(true);
+  } // setBalls
 
   getEnergy() {
     var result = 0;
@@ -343,14 +394,23 @@ class RPool {
     return result;
   } // getMomentum
 
-  private draw() {
+  /**
+   * Draw the table and all the balls
+   * @param drawVelocity if true the function draws also the velocity vectors of each ball 
+   */
+  private draw(drawVelocity: bool) {
     var ctx = this.canvas.getContext("2d");
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.save();
+    ctx.translate(this.pixelsBorder, this.pixelsBorder);
+    ctx.scale(this.pixelsPerMeter, this.pixelsPerMeter);
     ctx.fillStyle = "green";
-    ctx.rect(0, 0, 400, 300);
+    ctx.rect(0, 0, this.tableWidth, this.tableHeight);
     ctx.fill();
     for (var i = 0; i < this.balls.length; i++) {
-      this.balls[i].draw(ctx);
+      this.balls[i].draw(ctx, 1.0/this.pixelsPerMeter, drawVelocity);
     }
+    ctx.restore();
   } // draw
 
   /**
@@ -394,7 +454,7 @@ class RPool {
     var addCollision = (t, collision) => {
       if (t === result.t) {
         // The new collision happens at the exact same time of the current one, it has to be added to the list
-        if (!tryMergeCollisions(result.collisions, collision)) {
+        if (!this.doubleCollision || !tryMergeCollisions(result.collisions, collision)) {
           result.collisions.push(collision);
         }
       } else {
@@ -426,15 +486,25 @@ class RPool {
     return result;
   } // detectCollisions
 
-  private update(dt: number) {
+  private computeAirDragFactor() {
+    return 3 / 8 * poolParameters.sphereDragCoefficient * this.airDensity / poolParameters.ballDensity;
+  } // computeAirDragFactor
+
+  private computeRollingResistanceDeceleration() {
+    return this.rollingResistance * poolParameters.g;
+  } // computeRollingResistanceDeceleration
+
+  private update(dt: number, drawVelocity: bool) {
+    var airDragFactor = this.computeAirDragFactor();
+    var rollingResistanceDeceleration = this.computeRollingResistanceDeceleration();
     while (dt > 0) {
-      var firstCollisions = this.detectCollisions(dt, 0, 400, 0, 300);
+      var firstCollisions = this.detectCollisions(dt, 0, this.tableWidth, 0, this.tableHeight);
       if (firstCollisions.t > 0) {
         // The balls move freely up to the time of the first collision: update their positions and velocities accordingly
         for (var i = 0; i < this.balls.length; i++) {
           var ball = this.balls[i];
           ball.updatePosition(firstCollisions.t);
-          ball.updateVelocity(firstCollisions.t, this.parameters.airDragFactor, this.parameters.rollingResistance * this.parameters.g);
+          ball.updateVelocity(firstCollisions.t, airDragFactor, rollingResistanceDeceleration);
         }
       }
       // Compute the new velocities after the collisions
@@ -445,42 +515,48 @@ class RPool {
             var ballX = collision.balls[0];
             this.audioBallSide.volume = Math.min(this.maxSpeed, Math.abs(ballX.v)) / this.maxSpeed;
             this.audioBallSide.play();
-            ballX.v = -ballX.v * this.parameters.sideRestitution;
+            ballX.v = -ballX.v * this.sideRestitution;
             break;
           case "y":
             var ballY = collision.balls[0];
             this.audioBallSide.volume = Math.min(this.maxSpeed, Math.abs(ballY.w)) / this.maxSpeed;
             this.audioBallSide.play();
-            ballY.w = -ballY.w * this.parameters.sideRestitution;
+            ballY.w = -ballY.w * this.sideRestitution;
             break;
           case "b":
             var ball0 = collision.balls[0];
             var ball1 = collision.balls[1];
-            var relativeSpeed = Math.abs((ball0.v - ball1.v) * (ball0.x - ball1.x) + (ball0.w - ball1.w) * (ball0.y - ball1.y));
+            var dx = (ball0.x - ball1.x);
+            var dy = (ball0.y - ball1.y);
+            var relativeSpeed = Math.abs((ball0.v - ball1.v) * dx + (ball0.w - ball1.w) * dy) / Math.sqrt(dx*dx + dy*dy);
             this.audioBallBall.volume = Math.min(this.maxSpeed, relativeSpeed) / this.maxSpeed;
             this.audioBallBall.play();
-            ball0.collide(ball1, this.parameters.ballRestitution);
+            ball0.collide(ball1, this.ballRestitution);
             break;
           case "b2":
             var ball0 = collision.balls[0];
             var ball1 = collision.balls[1];
             var ball2 = collision.balls[2];
-            var relativeSpeed = Math.abs((ball0.v - ball1.v) * (ball0.x - ball1.x) + (ball0.w - ball1.w) * (ball0.y - ball1.y)) + Math.abs((ball0.v - ball2.v) * (ball0.x - ball2.x) + (ball0.w - ball2.w) * (ball0.y - ball2.y));
+            var dx1 = (ball0.x - ball1.x);
+            var dy1 = (ball0.y - ball1.y);
+            var dx2 = (ball0.x - ball2.x);
+            var dy2 = (ball0.y - ball2.y);
+            var relativeSpeed = Math.abs((ball0.v - ball1.v) * dx1 + (ball0.w - ball1.w) * dy1) / Math.sqrt(dx1 * dx1 + dy1 * dy1) + Math.abs((ball0.v - ball2.v) * dx2 + (ball0.w - ball2.w) * dy2) / Math.sqrt(dx2 * dx2 + dy2 * dy2);
             this.audioBallBall.volume = Math.min(this.maxSpeed, relativeSpeed) / this.maxSpeed;
             this.audioBallBall.play();
-            ball0.collide2(ball1, ball2, this.parameters.ballRestitution);
+            ball0.collide2(ball1, ball2, this.ballRestitution);
             break;
         }
       }
       // Continue with the remaining time
       dt -= firstCollisions.t;
     }
-    this.draw();
+    this.draw(drawVelocity);
   } // update
 
   start() {
     if (!this.timerToken) {
-      this.timerToken = setInterval(() => this.update(this.stepTime), this.stepTime * 1000);
+      this.timerToken = setInterval(() => this.update(this.stepTime, false), this.stepTime * 1000);
     }
   } // start
 
@@ -488,124 +564,135 @@ class RPool {
     if (this.timerToken) {
       clearTimeout(this.timerToken);
       this.timerToken = undefined;
+      this.draw(true);
     }
   } // stop
 
   step() {
     if (!this.timerToken) {
-      this.update(this.stepTime);
+      this.update(this.stepTime, true);
     }
   } // step
 
 } // class RPool
 
+function round(v: number) {
+  return Math.round(v * 100) / 100;
+} // round
+
+var yMiddle = round(poolParameters.tableHeight / 2);
+var yFourth = round(poolParameters.tableHeight / 4);
+var y30 = round(poolParameters.tableHeight / 30);
+var xMiddle = round(poolParameters.tableWidth / 2);
+var xThird = round(poolParameters.tableWidth / 3);
+var xFourth = round(poolParameters.tableWidth / 4);
+var rStd = round(poolParameters.ballRadius);
+var vFast = 1.0;
+var vMedium = 0.5;
+var vSlow = 0.25;
+
 var initialBalls = {
   fromLeft: [
-     new Ball(100, 150, 40, 0, 10, "black"),
-     new Ball(200, 150, 0, 0, 10, "red"),
+     new Ball(xFourth, yMiddle, vFast, 0, rStd, "black"),
+     new Ball(xFourth * 2, yMiddle, 0, 0, rStd, "red"),
   ],
   fromRight: [
-    new Ball(300, 150, -40, 0, 10, "black"),
-    new Ball(200, 150, 0, 0, 10, "red"),
+    new Ball(xFourth*3, yMiddle, -vFast, 0, rStd, "black"),
+    new Ball(xFourth*2, yMiddle, 0, 0, rStd, "red"),
   ],
   fromTop: [
-    new Ball(200, 75, 0, 40, 10, "black"),
-    new Ball(200, 150, 0, 0, 10, "red"),
+    new Ball(xMiddle, yFourth, 0, vFast, rStd, "black"),
+    new Ball(xMiddle, yMiddle, 0, 0, rStd, "red"),
   ],
   fromBottom: [
-    new Ball(200, 225, 0, -40, 10, "black"),
-    new Ball(200, 150, 0, 0, 10, "red"),
+    new Ball(xMiddle, yFourth*3, 0, -vFast, rStd, "black"),
+    new Ball(xMiddle, yMiddle, 0, 0, rStd, "red"),
   ],
   fromTopLeft: [
-    new Ball(150, 100, 20, 20, 10, "black"),
-    new Ball(200, 150, 0, 0, 10, "red"),
+    new Ball(xFourth, yFourth, vMedium, vMedium, rStd, "black"),
+    new Ball(xFourth + yFourth, yFourth + yFourth, 0, 0, rStd, "red"),
   ],
   toTopLeftCorner: [
-    new Ball(75, 75, -20, -20, 10, "black"),
-    new Ball(50, 50, 0, 0, 10, "red"),
+    new Ball(yFourth*2, yFourth*2, -vMedium, -vMedium, rStd, "black"),
+    new Ball(yFourth, yFourth, 0, 0, rStd, "red"),
   ],
   fromLeftTwoHorizontal: [
-    new Ball(100, 150, 40, 0, 10, "black"),
-    new Ball(200, 150, 0, 0, 10, "red"),
-    new Ball(220, 150, 0, 0, 10, "yellow"),
+    new Ball(xFourth, yMiddle, vFast, 0, rStd, "black"),
+    new Ball(xMiddle, yMiddle, 0, 0, rStd, "red"),
+    new Ball(xMiddle + rStd*2, yMiddle, 0, 0, rStd, "yellow"),
   ],
   fromLeftFourHorizontal: [
-    new Ball(100, 150, 40, 0, 15, "black"),
-    new Ball(200, 150, 0, 0, 10, "red"),
-    new Ball(220, 150, 0, 0, 10, "yellow"),
-    new Ball(240, 150, 0, 0, 10, "yellow"),
-    new Ball(260, 150, 0, 0, 10, "yellow"),
+    new Ball(xFourth, yMiddle, vFast, 0, rStd*1.5, "black"),
+    new Ball(xMiddle, yMiddle, 0, 0, rStd, "red"),
+    new Ball(xMiddle + rStd*2, yMiddle, 0, 0, rStd, "yellow"),
+    new Ball(xMiddle + rStd*4, yMiddle, 0, 0, rStd, "yellow"),
+    new Ball(xMiddle + rStd*6, yMiddle, 0, 0, rStd, "yellow"),
   ],
   fromLeftTwoVertical: [
-    new Ball(100, 150, 40, 0, 10, "black"),
-    new Ball(200, 140, 0, 0, 10, "red"),
-    new Ball(200, 160, 0, 0, 10, "yellow"),
-  ],
-  fromLeftTwo: [
-    new Ball(100, 150, 40, 0, 10, "black"),
-    new Ball(209, 165.5885, 0, 0, 8, "red"),
-    new Ball(212, 129.2154, 0, 0, 14, "yellow"),
+    new Ball(xThird, yMiddle, vFast, 0, rStd, "black"),
+    new Ball(2 * xThird, yMiddle - rStd, 0, 0, rStd, "red"),
+    new Ball(2 * xThird, yMiddle + rStd, 0, 0, rStd, "yellow"),
   ],
   fromRightTwoVertical: [
-    new Ball(200, 140, 0, 0, 10, "red"),
-    new Ball(200, 160, 0, 0, 10, "yellow"),
-    new Ball(300, 150, -40, 0, 10, "black"),
+    new Ball(xMiddle, yMiddle-rStd, 0, 0, rStd, "red"),
+    new Ball(xMiddle, yMiddle+rStd, 0, 0, rStd, "yellow"),
+    new Ball(xMiddle + xFourth, yMiddle, -vFast, 0, rStd, "black"),
   ],
   fromTopTwoHorizontal: [
-    new Ball(190, 150, 0, 0, 10, "red"),
-    new Ball(200, 50,  0, 40, 10, "black"),
-    new Ball(210, 150, 0, 0, 10, "yellow"),
+    new Ball(xMiddle - rStd, yMiddle, 0, 0, rStd, "red"),
+    new Ball(xMiddle, yFourth,  0, vFast, rStd, "black"),
+    new Ball(xMiddle + rStd, yMiddle, 0, 0, rStd, "yellow"),
   ],
   fromBottomTwoHorizontal: [
-    new Ball(190, 150, 0, 0, 10, "red"),
-    new Ball(200, 250, 0, -40, 10, "black"),
-    new Ball(210, 150, 0, 0, 10, "yellow"),
+    new Ball(xMiddle - rStd, yMiddle, 0, 0, rStd, "red"),
+    new Ball(xMiddle, yMiddle + yFourth, 0, -vFast, rStd, "black"),
+    new Ball(xMiddle + rStd, yMiddle, 0, 0, rStd, "yellow"),
   ],
   onLeftBorder: [
-    new Ball(75, 150, -20, 0, 10, "black"),
-    new Ball(10, 150, 0, 0, 10, "red"),
+    new Ball(xFourth, yMiddle, -vMedium, 0, rStd, "black"),
+    new Ball(rStd, yMiddle, 0, 0, rStd, "red"),
   ],
   fromLeftAbove: [
-    new Ball(100, 140, 40, 0, 15, "black"),
-    new Ball(200, 150, 0, 0, 15, "red"),
+    new Ball(xFourth, yMiddle-rStd, vFast, 0, rStd*1.5, "black"),
+    new Ball(xMiddle, yMiddle, 0, 0, rStd*1.5, "red"),
   ],
   fromLeftBelow: [
-    new Ball(100, 160, 40, 0, 15, "black"),
-    new Ball(200, 150, 0, 0, 15, "red"),
+    new Ball(xFourth, yMiddle+rStd, vFast, 0, rStd*1.5, "black"),
+    new Ball(xMiddle, yMiddle, 0, 0, rStd*1.5, "red"),
   ],
   fromLeftGlanceAbove: [
-   new Ball(100, 120, 40, 0, 15, "black"),
-   new Ball(200, 150, 0, 0, 15, "red"),
+   new Ball(xFourth, yMiddle-rStd*2, vFast, 0, rStd, "black"),
+   new Ball(xMiddle, yMiddle, 0, 0, rStd, "red"),
   ],
   fromLeftGlanceBelow: [
-    new Ball(100, 180, 40, 0, 15, "black"),
-    new Ball(200, 150, 0, 0, 15, "red"),
+    new Ball(xFourth, yMiddle+rStd*2, vFast, 0, rStd, "black"),
+    new Ball(xMiddle, yMiddle, 0, 0, rStd, "red"),
   ],
   fromTopLeftAbove: [
-    new Ball(50, 120, 20, 20, 15, "black"),
-    new Ball(100, 200, -20, -20, 15, "red"),
+    new Ball(xFourth, yFourth-rStd, vSlow, vSlow, rStd*1.5, "black"),
+    new Ball(xFourth + yFourth, yFourth + yFourth, -vSlow, -vSlow, rStd*1.5, "red"),
   ],
   fromTopLeftBelow: [
-    new Ball(50, 180, 20, 20, 15, "black"),
-    new Ball(100, 200, -20, -20, 15, "red"),
+    new Ball(xFourth, yFourth + rStd, vSlow, vSlow, rStd * 1.5, "black"),
+    new Ball(xFourth + yFourth, yFourth + yFourth, -vSlow, -vSlow, rStd * 1.5, "red"),
   ],
   fromTopLeft2: [
-    new Ball(50, 150, 20, 20, 15, "black"),
-    new Ball(100, 200, -20, -20, 15, "red"),
+    new Ball(xFourth, yFourth, vSlow, vSlow, rStd * 1.5, "black"),
+    new Ball(xFourth + yFourth, yFourth + yFourth, -vSlow, -vSlow, rStd * 1.5, "red"),
   ],
   fromTopRightAbove: [
-    new Ball(200, 80, -20, 20, 15, "black"),
-    new Ball(100, 200, 20, -20, 15, "red"),
+    new Ball(xMiddle, yFourth - rStd, -vSlow, vSlow, rStd*1.5, "black"),
+    new Ball(xMiddle - yFourth, yFourth + yFourth, vSlow, -vSlow, rStd*1.5, "red"),
   ],
   single: [
-    new Ball(350, 250, -40, 30, 10, "red"),
+    new Ball(xFourth*3, yFourth*3, -vMedium, vSlow, rStd, "red"),
   ],
   test: [
-    new Ball(100, 50, 40, 40, 15, "red"),
-    new Ball(200, 80, -40, -40, 12, "blue"),
-    new Ball(200, 150, 0, 0, 12, "orange"),
-    new Ball(220, 180, -10, 15, 12, "magenta"),
-    new Ball(300, 180, 0, -35, 12, "cyan"),
+    new Ball(xFourth, y30*5, vFast, vFast, rStd * 1.5, "red"),
+    new Ball(xFourth * 2, y30*8, -vFast, -vFast, rStd * 1.2, "blue"),
+    new Ball(xFourth * 2, yMiddle, 0, 0, rStd * 1.2, "orange"),
+    new Ball(xFourth * 2 + rStd*2, y30*18, -vSlow, vMedium, rStd * 1.2, "magenta"),
+    new Ball(xFourth * 3, y30 * 18, 0, -vFast, rStd * 1.2, "cyan"),
   ],
 };
 
@@ -623,15 +710,81 @@ function getQueryParams(qs: string) {
 } // getQueryParams
 
 $(() => {
-  var canvas = <HTMLCanvasElement> document.getElementById('canvas');
-  var ballsName = getQueryParams(document.location.search)["init"] || "test";
+  var canvas = <HTMLCanvasElement> $("#canvas")[0];
+  var queryParams = getQueryParams(document.location.search);
+  var stop = ("stop" in queryParams);
+  var doubleCollision = ("double" in queryParams);
+  var ballsName = queryParams["init"] || "test";
   var balls = <Ball[]>(initialBalls[ballsName] || []);
   if (balls.length === 0) {
     alert("There is no initial ball set '" + ballsName + "'");
   }
-  var game = new RPool(canvas, balls);
-  $("#start").click(event => game.start());
-  $("#stop").click(event => game.stop());
+  var game = new RPool(
+    canvas,
+    balls,
+    doubleCollision,
+    poolParameters.ballSideRestitution,
+    poolParameters.ballBallRestitution,
+    poolParameters.ballClothRollingResistance,
+    poolParameters.seaLevelAirDensity
+  );
+  var doStart = function() {
+    game.start();
+    $("#start").attr("disabled", "disabled");
+    $("#stop").removeAttr("disabled");
+    $("#step").attr("disabled", "disabled");
+  };
+  var doStop = function () {
+    game.stop();
+    $("#start").removeAttr("disabled");
+    $("#stop").attr("disabled", "disabled");
+    $("#step").removeAttr("disabled");
+  };
+  $("#start").click(event => doStart());
+  $("#stop").click(event => doStop());
   $("#step").click(event => game.step());
-  game.start();
+  var $init = $("#init");
+  for (var initName in initialBalls) {
+    $init.append(new Option(initName));
+  }
+  $init.val(ballsName);
+  $init.change(function () {
+    var ballsName = $(this).val();
+    game.setBalls(initialBalls[ballsName]);
+  });
+  $("#doubleCollision").attr("checked", game.doubleCollision).change(function(){
+    game.doubleCollision = this.checked;
+  });
+  $("#sideRestitution").valueslider({
+    min: 0.0,
+    max: 1.0,
+    step: 0.01,
+    value: game.sideRestitution,
+    change: (event, ui) => {
+      game.sideRestitution = ui.value;
+    }
+  });
+  $("#ballRestitution").valueslider({
+    min: 0.0,
+    max: 1.0,
+    step: 0.01,
+    value: game.ballRestitution,
+    change: (event, ui) => {
+      game.ballRestitution = ui.value;
+    }
+  });
+  $("#rollingResistance").valueslider({
+    min: 0.0,
+    max: 0.5,
+    step: 0.005,
+    value: game.rollingResistance,
+    change: (event, ui) => {
+      game.rollingResistance = ui.value;
+    }
+  });
+  if (stop) {
+    doStop();
+  } else {
+    doStart();
+  }
 });

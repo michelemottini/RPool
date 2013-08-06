@@ -36,8 +36,13 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="jquery-1.8.2.min.js" />
-    <Content Include="jquery-1.8.d.ts" />
+    <TypeScriptCompile Include="jqueryui\jquery.ui.valueslider.d.ts" />
+    <Content Include="jqueryui\file1.js">
+      <DependentUpon>jquery.ui.valueslider.d.ts</DependentUpon>
+    </Content>
+    <Content Include="jqueryui\jquery.ui.valueslider.js" />
+    <Content Include="jqueryui\jqueryui.d.ts" />
+    <Content Include="jquery\jquery.d.ts" />
     <Content Include="sounds\ball-ball.mp3" />
     <Content Include="sounds\ball-side.mp3" />
     <Content Include="web.config" />
